@@ -5,6 +5,7 @@ import makeManifestPlugin from './utils/plugins/make-manifest-plugin.js';
 import { watchPublicPlugin, watchRebuildPlugin } from '@extension/hmr';
 import { watchOption } from '@extension/vite-config';
 import env, { IS_DEV, IS_PROD } from '@extension/env';
+// @ts-ignore - vite-plugin-node-polyfills doesn't have types
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 const rootDir = resolve(import.meta.dirname);
@@ -29,8 +30,8 @@ export default defineConfig({
     watchPublicPlugin(),
     makeManifestPlugin({ outDir }),
     IS_DEV && watchRebuildPlugin({ reload: true, id: 'chrome-extension-hmr' }),
-    nodePolyfills(),
-  ],
+    // nodePolyfills(), // Temporarily disabled due to React 19 compatibility issues
+  ].filter(Boolean),
   publicDir: resolve(rootDir, 'public'),
   build: {
     lib: {

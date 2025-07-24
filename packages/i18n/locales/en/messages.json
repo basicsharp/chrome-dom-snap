@@ -1,7 +1,7 @@
 {
   "extensionDescription": {
     "description": "Extension description",
-    "message": "Chrome extension allows you to take and restore snapshots of the DOM of a web page."
+    "message": "Capture, store, and restore complete DOM snapshots of web pages. Perfect for developers and content creators."
   },
   "extensionName": {
     "description": "Extension name",

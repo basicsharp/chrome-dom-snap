@@ -1,28 +1,22 @@
-.App {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  text-align: center;
-  height: 100%;
-  padding: 1rem;
+/* DOM Snap Popup Styles */
+
+/* Remove any default body/html constraints */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: auto !important;
+  height: auto !important;
+  min-width: 480px;
 }
 
-.App-logo {
-  height: 50vmin;
-  margin-bottom: 1rem;
+/* Ensure popup container has no constraints */
+.popup-container {
+  width: 480px !important;
+  min-width: 480px !important;
+  box-sizing: border-box;
 }
 
-.App-header {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  font-size: 0.75rem;
-}
-
+/* Legacy styles for compatibility */
 code {
   background: rgba(148, 163, 184, 0.5);
   border-radius: 0.25rem;
