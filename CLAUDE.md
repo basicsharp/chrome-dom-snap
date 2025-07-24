@@ -140,10 +140,21 @@ Always handle these scenarios:
 
 ## Code Style Guidelines
 
-### JavaScript Conventions
-```javascript
-// Use modern ES6+ features
-const captureSnapshot = async () => {
+### ESLint & Prettier Configuration
+
+This project uses a comprehensive ESLint configuration with TypeScript, React, and accessibility support. All code is automatically formatted with Prettier.
+
+**Key ESLint Rules:**
+- **TypeScript**: Full TypeScript ESLint recommended rules
+- **React**: JSX runtime (no need for `import React`)
+- **Import Organization**: Automatic import sorting and grouping
+- **Accessibility**: jsx-a11y rules for WCAG compliance
+- **Prettier Integration**: Automatic code formatting
+
+### TypeScript Conventions
+```typescript
+// ✅ Correct: Use const and arrow functions
+const captureSnapshot = async (): Promise<void> => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const url = normalizeUrl(tab.url);
@@ -154,20 +165,91 @@ const captureSnapshot = async () => {
   }
 };
 
-// Consistent error handling
-const handleStorageError = (error) => {
-  if (error.message.includes('QUOTA_BYTES_PER_ITEM')) {
-    return 'Snapshot too large. Please try a smaller page.';
-  }
-  return 'Storage error occurred. Please try again.';
-};
+// ✅ Correct: Consistent type imports
+import type { StorageData } from '@extension/shared';
+import { normalizeUrl } from '@extension/shared';
+
+// ✅ Correct: Type exports
+export type { SnapshotData, StorageStats };
+export { captureSnapshot, restoreSnapshot };
+
+// ❌ Incorrect: var usage
+var data = getData(); // Use const instead
+
+// ❌ Incorrect: Function declarations when arrow functions preferred
+function handleError() {} // Use const handleError = () => {} instead
 ```
 
-### Naming Conventions
-- Functions: `camelCase` (e.g., `captureSnapshot`, `restoreDom`)
-- Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_SNAPSHOT_SIZE`)
-- Files: `kebab-case` or `camelCase` (e.g., `dom-serializer.js`)
-- CSS classes: `kebab-case` (e.g., `snapshot-item`)
+### Import Organization Rules
+```typescript
+// Imports are automatically organized in this order:
+// 1. Index imports
+// 2. Sibling imports (./file)
+// 3. Parent imports (../file)
+// 4. Internal imports (@extension/*)
+// 5. External imports (react, chrome-types)
+// 6. Builtin imports (node modules)
+// 7. Object imports
+// 8. Type imports (grouped separately)
+
+import type { ComponentProps } from 'react';
+import type { StorageData } from '@extension/shared';
+import { useEffect, useState } from 'react';
+import { storageService } from '@extension/shared';
+import './Popup.css';
+```
+
+### React/JSX Guidelines
+```typescript
+// ✅ Correct: No React import needed (JSX runtime)
+const MyComponent = () => <div>Hello</div>;
+
+// ✅ Correct: No prop-types (using TypeScript)
+interface Props {
+  title: string;
+  count: number;
+}
+
+const Component = ({ title, count }: Props) => (
+  <div>{title}: {count}</div>
+);
+
+// ✅ Correct: Arrow body style - use implicit return when possible
+const formatDate = (date: Date) => date.toISOString();
+
+// ❌ Incorrect: Unnecessary braces
+const formatDate = (date: Date) => { return date.toISOString(); };
+```
+
+### File and Naming Conventions
+- **Files**: `kebab-case` (e.g., `dom-serializer.ts`, `storage-service.ts`)
+- **Functions/Variables**: `camelCase` (e.g., `captureSnapshot`, `restoreDom`)
+- **Constants**: `UPPER_SNAKE_CASE` (e.g., `MAX_SNAPSHOT_SIZE`)
+- **Types/Interfaces**: `PascalCase` (e.g., `SnapshotData`, `StorageStats`)
+- **Components**: `PascalCase` (e.g., `Popup.tsx`, `ToggleButton.tsx`)
+- **CSS classes**: `kebab-case` (e.g., `snapshot-item`, `storage-indicator`)
+
+### Restricted Imports
+```typescript
+// ❌ Forbidden: Direct type-fest imports
+import { SetRequired } from 'type-fest';
+
+// ✅ Correct: Import from shared package
+import type { SetRequired } from '@extension/shared';
+```
+
+### Accessibility Requirements
+All UI components must follow WCAG guidelines enforced by jsx-a11y:
+- Proper ARIA attributes
+- Semantic HTML elements
+- Keyboard navigation support
+- Screen reader compatibility
+
+### Prettier Formatting
+- **Automatic**: Code is formatted on save and in CI/CD
+- **Configuration**: Uses `.prettierrc` in project root
+- **Validation**: GitHub Actions check formatting on PRs
+- **Integration**: ESLint runs Prettier as a rule
 
 ## Testing Approach
 
@@ -203,20 +285,45 @@ const handleStorageError = (error) => {
 
 ### Setting Up Development
 ```bash
-1. Create extension directory structure
-2. Implement manifest.json with required permissions
-3. Create basic popup.html interface
-4. Implement core capture/restore logic
-5. Test in Chrome with developer mode enabled
-6. Iterate based on testing results
+# Install dependencies
+pnpm install
+
+# Build the extension
+pnpm build
+
+# Development with hot reload
+pnpm dev
+
+# Type checking
+pnpm type-check
+
+# Linting and formatting
+pnpm lint           # Run ESLint
+pnpm lint:fix       # Fix auto-fixable issues
+pnpm format         # Run Prettier
+pnpm format:check   # Check formatting
 ```
+
+### Code Quality Tools
+- **ESLint**: Configured with TypeScript, React, and accessibility rules
+- **Prettier**: Automatic code formatting with consistent style
+- **TypeScript**: Full type safety across the entire project
+- **GitHub Actions**: Automated formatting validation on PRs
+
+### Pre-commit Checklist
+1. Run `pnpm lint` to check for linting errors
+2. Run `pnpm format:check` to verify formatting
+3. Run `pnpm type-check` to ensure TypeScript compilation
+4. Test extension loading in Chrome
+5. Verify functionality with manual testing
 
 ### Debugging Tips
 - Use Chrome DevTools for popup debugging
 - Check service worker logs in chrome://extensions
-- Use console.log liberally during development
+- Use TypeScript strict mode for better error catching
 - Test with various websites (static, SPA, heavy JS)
 - Monitor storage usage with chrome.storage.local.getBytesInUse()
+- Use React DevTools for component debugging
 
 ## Future Enhancement Notes
 
@@ -256,6 +363,9 @@ decompressData(data)        // Optional decompression
 ## Remember
 
 - Always read PLANNING.md at the start of every new conversation, check TASKS.md before starting your work, mark completed tasks to TASKS.md immediately, and add newly discovered tasks to TASKS.md when found.
+- **Follow Code Standards**: All code must pass ESLint and Prettier checks
+- **TypeScript First**: Use proper typing, imports, and exports
+- **Accessibility**: Follow jsx-a11y rules for WCAG compliance
 - This is a **privacy-focused** tool - no external communication
 - **User experience** is paramount - keep it simple and fast
 - **Storage is limited** - implement smart cleanup strategies
