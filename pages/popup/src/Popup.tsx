@@ -12,6 +12,7 @@ import type {
   RestoreSnapshotResponse,
   DeleteSnapshotResponse,
   ClearSnapshotsResponse,
+  ClearAllSnapshotsResponse,
 } from '@extension/shared';
 
 interface SnapshotItem {
@@ -183,7 +184,7 @@ const Popup = () => {
     [sendMessage],
   );
 
-  // Clear all snapshots
+  // Clear all snapshots for current page
   const clearAllSnapshots = useCallback(async () => {
     if (!confirm('Are you sure you want to delete all snapshots for this page?')) {
       return;
@@ -208,6 +209,40 @@ const Popup = () => {
     } catch (error) {
       console.error('Error clearing snapshots:', error);
       setError(error instanceof Error ? error.message : 'Failed to clear snapshots');
+    } finally {
+      setLoading(false);
+    }
+  }, [sendMessage]);
+
+  // Clear ALL snapshots from all pages
+  const clearAllSnapshotsFromAllPages = useCallback(async () => {
+    const confirmMessage =
+      'Are you sure you want to delete ALL snapshots from ALL pages?\n\n' +
+      'This will permanently remove all your saved snapshots and cannot be undone.';
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await sendMessage<ClearAllSnapshotsResponse>({
+        type: 'CLEAR_ALL_SNAPSHOTS',
+      });
+
+      if (response.deletedCount > 0) {
+        setSnapshots([]);
+        // Reload storage info
+        const storageResponse = await sendMessage<GetStorageInfoResponse>({
+          type: 'GET_STORAGE_INFO',
+        });
+        setStorageInfo(storageResponse.info);
+      }
+    } catch (error) {
+      console.error('Error clearing all snapshots:', error);
+      setError(error instanceof Error ? error.message : 'Failed to clear all snapshots');
     } finally {
       setLoading(false);
     }
@@ -352,7 +387,7 @@ const Popup = () => {
                 onClick={clearAllSnapshots}
                 disabled={loading}
                 className={cn('flex-shrink-0 text-xs text-red-600 hover:text-red-800 disabled:opacity-50')}>
-                Clear All
+                Clear This Page
               </button>
             )}
           </div>
@@ -426,6 +461,35 @@ const Popup = () => {
             </div>
           )}
         </div>
+
+        {/* Clear All Data Section */}
+        {storageInfo && storageInfo.snapshotCount > 0 && (
+          <div
+            className={cn(
+              'border-t px-4 py-2',
+              isLight ? 'border-gray-200 bg-gray-50/50' : 'border-gray-700 bg-gray-800/30',
+            )}>
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <p className={cn('text-xs', isLight ? 'text-gray-600' : 'text-gray-400')}>
+                  Clear all snapshots from all pages
+                </p>
+              </div>
+              <button
+                onClick={clearAllSnapshotsFromAllPages}
+                disabled={loading}
+                className={cn(
+                  'flex-shrink-0 rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
+                  isLight
+                    ? 'text-red-600 hover:bg-red-600 hover:text-white'
+                    : 'text-red-600 hover:bg-red-600 hover:text-white',
+                )}
+                title="Permanently delete ALL snapshots from ALL pages">
+                Clear All Data
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

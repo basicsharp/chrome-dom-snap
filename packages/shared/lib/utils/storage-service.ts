@@ -233,6 +233,42 @@ const clearSnapshotsForUrl = async (url: string): Promise<number> => {
 };
 
 /**
+ * Clears ALL snapshots from all pages
+ */
+const clearAllSnapshots = async (): Promise<number> => {
+  try {
+    const result = await chrome.storage.local.get(['snapshots', 'settings']);
+    const snapshots = result.snapshots || {};
+    const settings = { ...DEFAULT_SETTINGS, ...result.settings };
+
+    // Count total snapshots to be deleted
+    let totalDeleted = 0;
+    for (const urlSnapshots of Object.values(snapshots)) {
+      totalDeleted += (urlSnapshots as Snapshot[]).length;
+    }
+
+    if (totalDeleted > 0) {
+      // Clear all snapshots and reset metadata
+      await chrome.storage.local.set({
+        snapshots: {},
+        metadata: {
+          ...DEFAULT_METADATA,
+          lastCleanup: Date.now(),
+        },
+        settings, // Keep settings unchanged
+      });
+
+      console.log(`[DOM-SNAP] Cleared all ${totalDeleted} snapshots from all pages`);
+    }
+
+    return totalDeleted;
+  } catch (error) {
+    console.error('[DOM-SNAP] Error clearing all snapshots:', error);
+    return 0;
+  }
+};
+
+/**
  * Gets storage usage information
  */
 const getStorageInfo = async (): Promise<{
@@ -354,6 +390,7 @@ export {
   saveSnapshot,
   deleteSnapshot,
   clearSnapshotsForUrl,
+  clearAllSnapshots,
   getStorageInfo,
   initializeStorage,
 };

@@ -5,6 +5,7 @@ import {
   saveSnapshot,
   deleteSnapshot,
   clearSnapshotsForUrl,
+  clearAllSnapshots,
   getStorageInfo,
   getSnapshotById,
   isValidUrl,
@@ -16,6 +17,7 @@ import type {
   RestoreSnapshotRequest,
   DeleteSnapshotRequest,
   ClearSnapshotsRequest,
+  ClearAllSnapshotsRequest,
   GetStorageInfoRequest,
   GetCurrentTabRequest,
   ContentScriptCaptureResponse,
@@ -349,6 +351,37 @@ const handleClearSnapshots = async (request: ClearSnapshotsRequest): Promise<Ext
 };
 
 /**
+ * Handles clear all snapshots request
+ */
+const handleClearAllSnapshots = async (request: ClearAllSnapshotsRequest): Promise<ExtensionMessage> => {
+  try {
+    const deletedCount = await clearAllSnapshots();
+
+    if (deletedCount > 0) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon-34.png',
+        title: 'DOM Snap',
+        message: `All ${deletedCount} snapshots cleared from all pages`,
+      });
+    }
+
+    return {
+      type: 'CLEAR_ALL_SNAPSHOTS_RESPONSE',
+      requestId: request.requestId,
+      deletedCount,
+    };
+  } catch (error) {
+    console.error('[DOM-SNAP] Error clearing all snapshots:', error);
+    return {
+      type: 'CLEAR_ALL_SNAPSHOTS_RESPONSE',
+      requestId: request.requestId,
+      deletedCount: 0,
+    };
+  }
+};
+
+/**
  * Handles get storage info request
  */
 const handleGetStorageInfo = async (request: GetStorageInfoRequest): Promise<ExtensionMessage> => {
@@ -438,6 +471,10 @@ chrome.runtime.onMessage.addListener(
 
           case 'CLEAR_SNAPSHOTS':
             response = await handleClearSnapshots(message as ClearSnapshotsRequest);
+            break;
+
+          case 'CLEAR_ALL_SNAPSHOTS':
+            response = await handleClearAllSnapshots(message as ClearAllSnapshotsRequest);
             break;
 
           case 'GET_STORAGE_INFO':

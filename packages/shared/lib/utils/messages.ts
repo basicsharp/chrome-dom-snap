@@ -67,6 +67,15 @@ interface ClearSnapshotsResponse extends BaseMessage {
   deletedCount: number;
 }
 
+interface ClearAllSnapshotsRequest extends BaseMessage {
+  type: 'CLEAR_ALL_SNAPSHOTS';
+}
+
+interface ClearAllSnapshotsResponse extends BaseMessage {
+  type: 'CLEAR_ALL_SNAPSHOTS_RESPONSE';
+  deletedCount: number;
+}
+
 interface GetStorageInfoRequest extends BaseMessage {
   type: 'GET_STORAGE_INFO';
 }
@@ -147,6 +156,8 @@ type ExtensionMessage =
   | DeleteSnapshotResponse
   | ClearSnapshotsRequest
   | ClearSnapshotsResponse
+  | ClearAllSnapshotsRequest
+  | ClearAllSnapshotsResponse
   | GetStorageInfoRequest
   | GetStorageInfoResponse
   | GetCurrentTabRequest
@@ -237,6 +248,8 @@ export type {
   DeleteSnapshotResponse,
   ClearSnapshotsRequest,
   ClearSnapshotsResponse,
+  ClearAllSnapshotsRequest,
+  ClearAllSnapshotsResponse,
   GetStorageInfoRequest,
   GetStorageInfoResponse,
   GetCurrentTabRequest,
