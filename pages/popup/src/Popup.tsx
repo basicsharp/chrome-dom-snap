@@ -109,7 +109,7 @@ const Popup = () => {
 
       const response = await sendMessage<CaptureSnapshotResponse>({
         type: 'CAPTURE_SNAPSHOT',
-        name: `Snapshot ${new Date().toLocaleTimeString()}`,
+        name: `Snapshot ${new Date().toLocaleTimeString('en-US', { hour12: false })}`,
       });
 
       if (response.success) {
@@ -260,7 +260,10 @@ const Popup = () => {
   }, []);
 
   // Format timestamp
-  const formatTimestamp = useCallback((timestamp: number): string => new Date(timestamp).toLocaleString(), []);
+  const formatTimestamp = useCallback(
+    (timestamp: number): string => new Date(timestamp).toLocaleString('en-US', { hour12: false }),
+    [],
+  );
 
   // Load data on mount
   useEffect(() => {

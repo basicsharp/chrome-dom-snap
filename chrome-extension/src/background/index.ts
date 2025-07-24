@@ -152,7 +152,7 @@ const handleCaptureSnapshot = async (request: CaptureSnapshotRequest): Promise<E
     // Save snapshot
     const snapshotId = await saveSnapshot(tab.url, {
       timestamp: Date.now(),
-      name: request.name || `Snapshot ${new Date().toLocaleString()}`,
+      name: request.name || `Snapshot ${new Date().toLocaleString('en-US', { hour12: false })}`,
       domContent: captureResponse.data.domContent,
       metadata: captureResponse.data.metadata,
     });
