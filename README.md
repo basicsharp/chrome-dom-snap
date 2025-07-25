@@ -8,6 +8,10 @@
 
 > A privacy-focused Chrome extension that allows users to capture, store, and restore DOM states of web pages locally, featuring advanced hot reload restoration technology.
 
+<div align="center">
+  <img src="screenshot.png" style="max-width: 720px;"/> 
+</div>
+
 ## 🚀 Features
 
 ### Core Functionality
