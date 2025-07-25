@@ -1,18 +1,38 @@
-import { captureDOM, restoreDOM, validateDOMContent } from '@extension/shared';
+import { captureDOM, restoreDOM, restoreDOMHotReload, validateDOMContent } from '@extension/shared';
 import type {
   ExtensionMessage,
   ContentScriptCaptureRequest,
-  ContentScriptRestoreRequest,
   ContentScriptCaptureResponse,
+  ContentScriptRestoreRequest,
   ContentScriptRestoreResponse,
-} from '@extension/shared';
+} from '@extension/shared/lib/utils/messages';
+
+interface GlobalThis {
+  __DOM_SNAP_RESTORE_METHOD?: string;
+  __DOM_SNAP_CONFIG?: typeof RESTORATION_CONFIG;
+  __DOM_SNAP_SET_METHOD?: (method: 'hot-reload' | 'traditional', preserveState?: boolean) => typeof RESTORATION_CONFIG;
+}
 
 /**
- * DOM Snapshot Content Script
- * Handles DOM capture and restoration in web pages
+ * Configuration for restoration method
  */
+const RESTORATION_CONFIG = {
+  // Set to 'hot-reload' for the new method, 'traditional' for the old method
+  method: (globalThis as GlobalThis).__DOM_SNAP_RESTORE_METHOD || 'hot-reload',
+  // Enable/disable state preservation
+  preserveState: true,
+  // Enable debug logging
+  debug: true,
+};
 
-console.log('[DOM-SNAP] Content script loaded');
+/**
+ * Debug logger
+ */
+const debugLog = (message: string, ...args: unknown[]) => {
+  if (RESTORATION_CONFIG.debug) {
+    console.log(`[DOM-SNAP DEBUG] ${message}`, ...args);
+  }
+};
 
 /**
  * Handles DOM capture request from background script
@@ -20,23 +40,24 @@ console.log('[DOM-SNAP] Content script loaded');
 const handleCaptureRequest = async (request: ContentScriptCaptureRequest): Promise<ContentScriptCaptureResponse> => {
   try {
     console.log('[DOM-SNAP] Starting DOM capture...');
+    debugLog('Capture request received', request);
 
-    const options = {
-      includeStyles: request.options?.includeStyles ?? true,
-      includeScripts: request.options?.includeScripts ?? false,
-      maxSize: request.options?.maxSize ?? 5 * 1024 * 1024,
+    const result = await captureDOM({
       timeout: 10000,
-    };
+      maxSize: 10 * 1024 * 1024, // 10MB limit
+    });
 
-    const result = await captureDOM(options);
-
-    console.log(`[DOM-SNAP] DOM captured successfully (${result.metadata.size} bytes)`);
+    console.log('[DOM-SNAP] DOM captured successfully');
+    debugLog('Capture completed', { size: result.metadata.size, title: result.metadata.pageTitle });
 
     return {
       type: 'CONTENT_CAPTURE_DOM_RESPONSE',
       requestId: request.requestId,
       success: true,
-      data: result,
+      data: {
+        domContent: result.domContent,
+        metadata: result.metadata,
+      },
     };
   } catch (error) {
     console.error('[DOM-SNAP] Error capturing DOM:', error);
@@ -51,11 +72,31 @@ const handleCaptureRequest = async (request: ContentScriptCaptureRequest): Promi
 };
 
 /**
+ * Shows a confirmation dialog for restoration
+ */
+const showRestoreConfirmation = async (): Promise<boolean> => {
+  const method = RESTORATION_CONFIG.method === 'hot-reload' ? 'Hot Reload' : 'Traditional';
+  const preserveNote = RESTORATION_CONFIG.preserveState
+    ? 'Your current form data, scroll position, and JavaScript state will be preserved.'
+    : 'Current page state will be lost.';
+
+  return confirm(
+    `Restore DOM snapshot using ${method} method?\n\n` +
+      `${preserveNote}\n\n` +
+      `This action will modify the current page content. Continue?`,
+  );
+};
+
+/**
  * Handles DOM restoration request from background script
  */
 const handleRestoreRequest = async (request: ContentScriptRestoreRequest): Promise<ContentScriptRestoreResponse> => {
   try {
     console.log('[DOM-SNAP] Starting DOM restoration...');
+    debugLog('Restore request received', {
+      method: RESTORATION_CONFIG.method,
+      preserveState: RESTORATION_CONFIG.preserveState,
+    });
 
     // Validate DOM content before restoration
     const validation = validateDOMContent(request.domContent);
@@ -74,9 +115,19 @@ const handleRestoreRequest = async (request: ContentScriptRestoreRequest): Promi
       };
     }
 
-    await restoreDOM(request.domContent, { timeout: 5000 });
-
-    console.log('[DOM-SNAP] DOM restored successfully');
+    // Choose restoration method based on configuration
+    if (RESTORATION_CONFIG.method === 'hot-reload') {
+      debugLog('Using hot reload restoration method');
+      await restoreDOMHotReload(request.domContent, {
+        timeout: 5000,
+        preserveState: RESTORATION_CONFIG.preserveState,
+      });
+      console.log('[DOM-SNAP] DOM restored successfully using hot reload method');
+    } else {
+      debugLog('Using traditional restoration method');
+      await restoreDOM(request.domContent, { timeout: 5000 });
+      console.log('[DOM-SNAP] DOM restored successfully using traditional method');
+    }
 
     return {
       type: 'CONTENT_RESTORE_DOM_RESPONSE',
@@ -96,124 +147,69 @@ const handleRestoreRequest = async (request: ContentScriptRestoreRequest): Promi
 };
 
 /**
- * Shows confirmation dialog before DOM restoration
+ * Message handler for content script
  */
-const showRestoreConfirmation = async (): Promise<boolean> =>
-  new Promise(resolve => {
-    // Try to show a native confirm dialog
-    // Note: This may be blocked by some sites or CSP, so we handle gracefully
-    try {
-      const confirmed = confirm(
-        'DOM Snap: This will replace the current page content with the snapshot. ' +
-          'Any unsaved changes will be lost. Continue?',
-      );
-      resolve(confirmed);
-    } catch {
-      console.warn('[DOM-SNAP] Could not show confirmation dialog, proceeding with restoration');
-      // If we can't show confirmation, we proceed anyway since the user explicitly requested it
-      resolve(true);
-    }
-  });
+const handleMessage = (
+  message: ExtensionMessage,
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ExtensionMessage) => void,
+): boolean => {
+  debugLog('Message received', message.type);
 
-/**
- * Main message listener for content script
- */
-chrome.runtime.onMessage.addListener(
-  (
-    message: ExtensionMessage,
-    _sender: chrome.runtime.MessageSender,
-    sendResponse: (response: ExtensionMessage) => void,
-  ) => {
-    console.log(`[DOM-SNAP] Content script received message: ${message.type}`);
+  switch (message.type) {
+    case 'CONTENT_CAPTURE_DOM':
+      handleCaptureRequest(message as ContentScriptCaptureRequest)
+        .then(sendResponse)
+        .catch(error => {
+          console.error('[DOM-SNAP] Error in capture handler:', error);
+          sendResponse({
+            type: 'CONTENT_CAPTURE_DOM_RESPONSE',
+            requestId: message.requestId,
+            success: false,
+            error: error instanceof Error ? error.message : 'Handler error',
+          } as ContentScriptCaptureResponse);
+        });
+      return true; // Keep message channel open for async response
 
-    // Handle messages asynchronously
-    (async () => {
-      try {
-        let response;
+    case 'CONTENT_RESTORE_DOM':
+      handleRestoreRequest(message as ContentScriptRestoreRequest)
+        .then(sendResponse)
+        .catch(error => {
+          console.error('[DOM-SNAP] Error in restore handler:', error);
+          sendResponse({
+            type: 'CONTENT_RESTORE_DOM_RESPONSE',
+            requestId: message.requestId,
+            success: false,
+            error: error instanceof Error ? error.message : 'Handler error',
+          } as ContentScriptRestoreResponse);
+        });
+      return true; // Keep message channel open for async response
 
-        switch (message.type) {
-          case 'CONTENT_CAPTURE_DOM':
-            response = await handleCaptureRequest(message as ContentScriptCaptureRequest);
-            break;
-
-          case 'CONTENT_RESTORE_DOM':
-            response = await handleRestoreRequest(message as ContentScriptRestoreRequest);
-            break;
-
-          default:
-            console.warn(`[DOM-SNAP] Unknown message type in content script: ${message.type}`);
-            response = {
-              requestId: message.requestId,
-              error: `Unknown message type: ${message.type}`,
-            } as unknown as ExtensionMessage;
-        }
-
-        sendResponse(response);
-      } catch (error) {
-        console.error('[DOM-SNAP] Error handling message in content script:', error);
-        sendResponse({
-          requestId: message.requestId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        } as unknown as ExtensionMessage);
-      }
-    })();
-
-    // Return true to indicate we'll send response asynchronously
-    return true;
-  },
-);
-
-/**
- * Initialization
- */
-(() => {
-  // Check if we're in a valid context for DOM operations
-  if (typeof document === 'undefined') {
-    console.warn('[DOM-SNAP] Content script loaded in non-document context');
-    return;
+    default:
+      debugLog('Unknown message type', message.type);
+      return false;
   }
+};
 
-  // Check if the page is accessible
-  try {
-    // Test if we can access document properties
-    const tagName = document.documentElement.tagName;
-    console.log(`[DOM-SNAP] Content script initialized on ${window.location.hostname} (${tagName})`);
-  } catch {
-    console.warn('[DOM-SNAP] Limited access to document, some features may not work');
-  }
+// Register message listener
+chrome.runtime.onMessage.addListener(handleMessage);
 
-  // Add a small indicator that the extension is active (for debugging)
-  if (process.env.NODE_ENV === 'development') {
-    const indicator = document.createElement('div');
-    indicator.id = 'dom-snap-indicator';
-    indicator.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: #3b82f6;
-      color: white;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: monospace;
-      z-index: 999999;
-      pointer-events: none;
-      opacity: 0.7;
-    `;
-    indicator.textContent = 'DOM Snap Active';
+// Expose configuration for testing
+(globalThis as GlobalThis).__DOM_SNAP_CONFIG = RESTORATION_CONFIG;
 
-    // Add to page after a short delay to ensure DOM is ready
-    setTimeout(() => {
-      if (document.body) {
-        document.body.appendChild(indicator);
+// Log initialization
+debugLog('Content script initialized', {
+  url: location.href,
+  method: RESTORATION_CONFIG.method,
+  preserveState: RESTORATION_CONFIG.preserveState,
+});
 
-        // Remove after 3 seconds
-        setTimeout(() => {
-          if (indicator.parentNode) {
-            indicator.parentNode.removeChild(indicator);
-          }
-        }, 3000);
-      }
-    }, 1000);
-  }
-})();
+console.log('[DOM-SNAP] Content script loaded and ready');
+
+// Add a global function to switch restoration methods for testing
+(globalThis as GlobalThis).__DOM_SNAP_SET_METHOD = (method: 'hot-reload' | 'traditional', preserveState = true) => {
+  RESTORATION_CONFIG.method = method;
+  RESTORATION_CONFIG.preserveState = preserveState;
+  console.log(`[DOM-SNAP] Switched to ${method} restoration method (preserveState: ${preserveState})`);
+  return RESTORATION_CONFIG;
+};

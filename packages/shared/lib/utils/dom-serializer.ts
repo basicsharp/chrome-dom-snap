@@ -171,10 +171,11 @@ const captureDOM = async (options: SerializationOptions = {}): Promise<Serializa
 };
 
 /**
- * Restores DOM from serialized content
+ * Restores DOM from serialized content using hot-reload-like approach
+ * This preserves JavaScript state, event listeners, and form data
  */
-const restoreDOM = async (domContent: string, options: { timeout?: number } = {}): Promise<void> => {
-  const timeout = options.timeout || 5000;
+const restoreDOMHotReload = async (domContent: string, options: RestoreOptions = {}): Promise<void> => {
+  const { timeout = 5000, preserveState = true } = options;
 
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -184,13 +185,28 @@ const restoreDOM = async (domContent: string, options: { timeout?: number } = {}
     try {
       const startTime = performance.now();
 
-      // Clear current document
-      document.open();
-      document.write(domContent);
-      document.close();
+      // Parse the snapshot HTML
+      const parser = new DOMParser();
+      const snapshotDoc = parser.parseFromString(domContent, 'text/html');
+
+      if (!snapshotDoc || !snapshotDoc.documentElement) {
+        throw new Error('Failed to parse snapshot DOM content');
+      }
+
+      // Preserve current state if requested
+      const preservedState = preserveState ? preserveCurrentState() : null;
+
+      // Update document elements selectively
+      updateDocumentHead(snapshotDoc.head);
+      updateDocumentBody(snapshotDoc.body as HTMLBodyElement);
+
+      // Restore preserved state
+      if (preservedState) {
+        restorePreservedState(preservedState);
+      }
 
       const endTime = performance.now();
-      console.log(`[DOM-SNAP] Restoration completed in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`[DOM-SNAP] Hot-reload restoration completed in ${(endTime - startTime).toFixed(2)}ms`);
 
       clearTimeout(timeoutId);
       resolve();
@@ -199,6 +215,189 @@ const restoreDOM = async (domContent: string, options: { timeout?: number } = {}
       reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
+};
+
+/**
+ * Preserves current page state that should survive restoration
+ */
+const preserveCurrentState = (): PreservedState => {
+  const state: PreservedState = {
+    scroll: {
+      x: window.scrollX,
+      y: window.scrollY,
+    },
+    focus: {
+      element: document.activeElement?.tagName,
+      id: document.activeElement?.id,
+      name: (document.activeElement as HTMLInputElement)?.name,
+    },
+    forms: {} as Record<string, FormData>,
+    localStorage: { ...localStorage },
+    sessionStorage: { ...sessionStorage },
+  };
+
+  // Preserve form data
+  document.querySelectorAll('form').forEach((form, index) => {
+    const formId = form.id || `form-${index}`;
+    state.forms[formId] = new FormData(form);
+  });
+
+  return state;
+};
+
+/**
+ * Updates document head with smart merging
+ */
+const updateDocumentHead = (newHead: HTMLHeadElement) => {
+  const currentHead = document.head;
+
+  // Keep existing <script> tags to preserve JS state
+  const existingScripts = Array.from(currentHead.querySelectorAll('script[src]'));
+
+  // Clear current head but preserve critical elements
+  while (currentHead.firstChild) {
+    currentHead.removeChild(currentHead.firstChild);
+  }
+
+  // Add new head content
+  Array.from(newHead.children).forEach(child => {
+    // Skip script tags that already exist to prevent re-execution
+    if (child.tagName === 'SCRIPT') {
+      const existingScript = existingScripts.find(
+        script => (script as HTMLScriptElement).src === (child as HTMLScriptElement).src,
+      );
+      if (!existingScript) {
+        currentHead.appendChild(child.cloneNode(true));
+      }
+    } else {
+      currentHead.appendChild(child.cloneNode(true));
+    }
+  });
+
+  // Re-add preserved external scripts
+  existingScripts.forEach(script => currentHead.appendChild(script));
+};
+
+/**
+ * Updates document body with morphing technique
+ */
+const updateDocumentBody = (newBody: HTMLBodyElement) => {
+  const currentBody = document.body;
+
+  // Use morphing algorithm to minimize DOM changes
+  morphElement(currentBody as Element, newBody as Element);
+};
+
+/**
+ * Morphs one element to match another while preserving event listeners
+ */
+const morphElement = (current: Element, target: Element) => {
+  // If elements are identical, no change needed
+  if (current.isEqualNode(target)) {
+    return;
+  }
+
+  // Update attributes
+  const currentAttrs = current.attributes;
+  const targetAttrs = target.attributes;
+
+  // Remove old attributes
+  for (let i = currentAttrs.length - 1; i >= 0; i--) {
+    const attr = currentAttrs[i];
+    if (!target.hasAttribute(attr.name)) {
+      current.removeAttribute(attr.name);
+    }
+  }
+
+  // Add/update new attributes
+  for (let i = 0; i < targetAttrs.length; i++) {
+    const attr = targetAttrs[i];
+    if (current.getAttribute(attr.name) !== attr.value) {
+      current.setAttribute(attr.name, attr.value);
+    }
+  }
+
+  // Handle child nodes
+  const currentChildren = Array.from(current.childNodes);
+  const targetChildren = Array.from(target.childNodes);
+
+  const maxLength = Math.max(currentChildren.length, targetChildren.length);
+
+  for (let i = 0; i < maxLength; i++) {
+    const currentChild = currentChildren[i];
+    const targetChild = targetChildren[i];
+
+    if (!currentChild && targetChild) {
+      // Add new child
+      current.appendChild(targetChild.cloneNode(true));
+    } else if (currentChild && !targetChild) {
+      // Remove old child
+      current.removeChild(currentChild);
+    } else if (currentChild && targetChild) {
+      if (currentChild.nodeType === Node.TEXT_NODE && targetChild.nodeType === Node.TEXT_NODE) {
+        // Update text content
+        if (currentChild.textContent !== targetChild.textContent) {
+          currentChild.textContent = targetChild.textContent;
+        }
+      } else if (currentChild.nodeType === Node.ELEMENT_NODE && targetChild.nodeType === Node.ELEMENT_NODE) {
+        const currentEl = currentChild as Element;
+        const targetEl = targetChild as Element;
+
+        if (currentEl.tagName === targetEl.tagName) {
+          // Recursively morph matching elements
+          morphElement(currentEl, targetEl);
+        } else {
+          // Replace with new element
+          current.replaceChild(targetEl.cloneNode(true), currentEl);
+        }
+      } else {
+        // Different node types, replace
+        current.replaceChild(targetChild.cloneNode(true), currentChild);
+      }
+    }
+  }
+};
+
+interface PreservedState {
+  scroll: { x: number; y: number };
+  focus: { element?: string; id?: string; name?: string };
+  forms: Record<string, FormData>;
+  localStorage: Record<string, string>;
+  sessionStorage: Record<string, string>;
+}
+
+/**
+ * Restores preserved state after DOM update
+ */
+const restorePreservedState = (state: PreservedState) => {
+  // Restore scroll position
+  setTimeout(() => {
+    window.scrollTo(state.scroll.x, state.scroll.y);
+  }, 50);
+
+  // Restore form data
+  Object.entries(state.forms).forEach(([formId, formData]) => {
+    const form =
+      document.getElementById(formId) ||
+      document.querySelector(`form:nth-child(${parseInt(formId.split('-')[1]) + 1})`);
+
+    if (form && formData instanceof FormData) {
+      formData.forEach((value, name) => {
+        const input = form.querySelector(`[name="${name}"]`) as HTMLInputElement;
+        if (input && typeof value === 'string') {
+          input.value = value;
+        }
+      });
+    }
+  });
+
+  // Restore focus (best effort)
+  if (state.focus.id) {
+    const element = document.getElementById(state.focus.id);
+    if (element && 'focus' in element) {
+      setTimeout(() => (element as HTMLElement).focus(), 100);
+    }
+  }
 };
 
 /**
@@ -244,5 +443,42 @@ const validateDOMContent = (domContent: string): { isValid: boolean; errors: str
   };
 };
 
-export type { SerializationResult, SerializationOptions };
-export { captureDOM, restoreDOM, calculateDOMSize, validateDOMContent };
+interface RestoreOptions {
+  timeout?: number;
+  preserveState?: boolean;
+  morphing?: boolean;
+}
+
+/**
+ * Restores DOM from serialized content (legacy method - causes page refresh)
+ */
+const restoreDOM = async (domContent: string, options: { timeout?: number } = {}): Promise<void> => {
+  const timeout = options.timeout || 5000;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`DOM restoration timed out after ${timeout}ms`));
+    }, timeout);
+
+    try {
+      const startTime = performance.now();
+
+      // Clear current document
+      document.open();
+      document.write(domContent);
+      document.close();
+
+      const endTime = performance.now();
+      console.log(`[DOM-SNAP] Restoration completed in ${(endTime - startTime).toFixed(2)}ms`);
+
+      clearTimeout(timeoutId);
+      resolve();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+};
+
+export type { SerializationResult, SerializationOptions, RestoreOptions };
+export { captureDOM, restoreDOM, restoreDOMHotReload, calculateDOMSize, validateDOMContent };
