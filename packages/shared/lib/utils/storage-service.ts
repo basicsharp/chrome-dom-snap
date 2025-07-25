@@ -199,6 +199,49 @@ const deleteSnapshot = async (snapshotId: string): Promise<boolean> => {
 };
 
 /**
+ * Renames a specific snapshot
+ */
+const renameSnapshot = async (snapshotId: string, newName: string): Promise<boolean> => {
+  // Validate the new name
+  if (!newName || newName.trim().length === 0) {
+    throw new Error('Snapshot name cannot be empty');
+  }
+
+  if (newName.length > 100) {
+    throw new Error('Snapshot name cannot exceed 100 characters');
+  }
+
+  const trimmedName = newName.trim();
+
+  try {
+    const result = await chrome.storage.local.get('snapshots');
+    const snapshots = result.snapshots || {};
+
+    let found = false;
+
+    // Find and update the snapshot
+    for (const urlSnapshots of Object.values(snapshots)) {
+      const snapshot = (urlSnapshots as Snapshot[]).find(s => s.id === snapshotId);
+      if (snapshot) {
+        snapshot.name = trimmedName;
+        found = true;
+        break;
+      }
+    }
+
+    if (found) {
+      await chrome.storage.local.set({ snapshots });
+      console.log(`[DOM-SNAP] Renamed snapshot ${snapshotId} to "${trimmedName}"`);
+    }
+
+    return found;
+  } catch (error) {
+    console.error('[DOM-SNAP] Error renaming snapshot:', error);
+    throw error;
+  }
+};
+
+/**
  * Clears all snapshots for a specific URL
  */
 const clearSnapshotsForUrl = async (url: string): Promise<number> => {
@@ -389,6 +432,7 @@ export {
   getSnapshotById,
   saveSnapshot,
   deleteSnapshot,
+  renameSnapshot,
   clearSnapshotsForUrl,
   clearAllSnapshots,
   getStorageInfo,

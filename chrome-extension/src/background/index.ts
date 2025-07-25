@@ -4,6 +4,7 @@ import {
   getSnapshotsForUrl,
   saveSnapshot,
   deleteSnapshot,
+  renameSnapshot,
   clearSnapshotsForUrl,
   clearAllSnapshots,
   getStorageInfo,
@@ -16,6 +17,7 @@ import type {
   GetSnapshotsRequest,
   RestoreSnapshotRequest,
   DeleteSnapshotRequest,
+  RenameSnapshotRequest,
   ClearSnapshotsRequest,
   ClearAllSnapshotsRequest,
   GetStorageInfoRequest,
@@ -152,7 +154,9 @@ const handleCaptureSnapshot = async (request: CaptureSnapshotRequest): Promise<E
     // Save snapshot
     const snapshotId = await saveSnapshot(tab.url, {
       timestamp: Date.now(),
-      name: request.name || `Snapshot ${new Date().toLocaleString('en-US', { hour12: false })}`,
+      name:
+        request.name ||
+        `Snapshot ${new Date().toISOString().substring(0, 10)} ${new Date().toTimeString().substring(0, 8)}`,
       domContent: captureResponse.data.domContent,
       metadata: captureResponse.data.metadata,
     });
@@ -298,6 +302,39 @@ const handleDeleteSnapshot = async (request: DeleteSnapshotRequest): Promise<Ext
     console.error('[DOM-SNAP] Error deleting snapshot:', error);
     return {
       type: 'DELETE_SNAPSHOT_RESPONSE',
+      requestId: request.requestId,
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};
+
+/**
+ * Handles rename snapshot request
+ */
+const handleRenameSnapshot = async (request: RenameSnapshotRequest): Promise<ExtensionMessage> => {
+  try {
+    const success = await renameSnapshot(request.snapshotId, request.newName);
+
+    if (success) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon-34.png',
+        title: 'DOM Snap',
+        message: `Snapshot renamed to "${request.newName}"`,
+      });
+    }
+
+    return {
+      type: 'RENAME_SNAPSHOT_RESPONSE',
+      requestId: request.requestId,
+      success,
+      error: success ? undefined : 'Snapshot not found',
+    };
+  } catch (error) {
+    console.error('[DOM-SNAP] Error renaming snapshot:', error);
+    return {
+      type: 'RENAME_SNAPSHOT_RESPONSE',
       requestId: request.requestId,
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -467,6 +504,10 @@ chrome.runtime.onMessage.addListener(
 
           case 'DELETE_SNAPSHOT':
             response = await handleDeleteSnapshot(message as DeleteSnapshotRequest);
+            break;
+
+          case 'RENAME_SNAPSHOT':
+            response = await handleRenameSnapshot(message as RenameSnapshotRequest);
             break;
 
           case 'CLEAR_SNAPSHOTS':

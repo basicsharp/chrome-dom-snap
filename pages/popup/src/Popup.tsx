@@ -11,6 +11,7 @@ import type {
   GetStorageInfoResponse,
   RestoreSnapshotResponse,
   DeleteSnapshotResponse,
+  RenameSnapshotResponse,
   ClearSnapshotsResponse,
   ClearAllSnapshotsResponse,
 } from '@extension/shared';
@@ -45,6 +46,8 @@ const Popup = () => {
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingSnapshotId, setEditingSnapshotId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
 
   // Send message to background script
   const sendMessage = useCallback(
@@ -109,7 +112,7 @@ const Popup = () => {
 
       const response = await sendMessage<CaptureSnapshotResponse>({
         type: 'CAPTURE_SNAPSHOT',
-        name: `Snapshot ${new Date().toLocaleTimeString('en-US', { hour12: false })}`,
+        name: `Snapshot ${new Date().toISOString().substring(0, 10)} ${new Date().toTimeString().substring(0, 8)}`,
       });
 
       if (response.success) {
@@ -182,6 +185,68 @@ const Popup = () => {
       }
     },
     [sendMessage],
+  );
+
+  // Start editing a snapshot name
+  const startEditing = useCallback((snapshotId: string, currentName: string) => {
+    setEditingSnapshotId(snapshotId);
+    setEditingName(currentName);
+  }, []);
+
+  // Cancel editing
+  const cancelEditing = useCallback(() => {
+    setEditingSnapshotId(null);
+    setEditingName('');
+  }, []);
+
+  // Save renamed snapshot
+  const saveRename = useCallback(
+    async (snapshotId: string) => {
+      if (!editingName.trim()) {
+        setError('Snapshot name cannot be empty');
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await sendMessage<RenameSnapshotResponse>({
+          type: 'RENAME_SNAPSHOT',
+          snapshotId,
+          newName: editingName.trim(),
+        });
+
+        if (response.success) {
+          // Update local state
+          setSnapshots(prev => prev.map(s => (s.id === snapshotId ? { ...s, name: editingName.trim() } : s)));
+          setEditingSnapshotId(null);
+          setEditingName('');
+        } else {
+          setError(response.error || 'Failed to rename snapshot');
+        }
+      } catch (error) {
+        console.error('Error renaming snapshot:', error);
+        setError(error instanceof Error ? error.message : 'Failed to rename snapshot');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sendMessage, editingName],
+  );
+
+  // Handle Enter key to save, Escape to cancel
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent, snapshotId: string) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveRename(snapshotId);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelEditing();
+      }
+    },
+    [saveRename, cancelEditing],
   );
 
   // Clear all snapshots for current page
@@ -260,10 +325,16 @@ const Popup = () => {
   }, []);
 
   // Format timestamp
-  const formatTimestamp = useCallback(
-    (timestamp: number): string => new Date(timestamp).toLocaleString('en-US', { hour12: false }),
-    [],
-  );
+  const formatTimestamp = useCallback((timestamp: number): string => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }, []);
 
   // Load data on mount
   useEffect(() => {
@@ -421,9 +492,68 @@ const Popup = () => {
                     )}>
                     <div className="flex w-full items-start gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className={cn('truncate text-sm font-medium', isLight ? 'text-gray-900' : 'text-white')}>
-                          {snapshot.name}
-                        </p>
+                        {editingSnapshotId === snapshot.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={e => setEditingName(e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, snapshot.id)}
+                              className={cn(
+                                'flex-1 rounded border px-1 py-0.5 text-sm font-medium',
+                                isLight
+                                  ? 'border-gray-300 bg-white text-gray-900'
+                                  : 'border-gray-600 bg-gray-700 text-white',
+                              )}
+                              placeholder="Enter snapshot name"
+                              disabled={loading}
+                            />
+                            <button
+                              onClick={() => saveRename(snapshot.id)}
+                              disabled={loading || !editingName.trim()}
+                              className={cn(
+                                'rounded px-1 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                                isLight
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-green-900/50 text-green-300 hover:bg-green-900/70',
+                              )}
+                              title="Save (Enter)">
+                              ✓
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              disabled={loading}
+                              className={cn(
+                                'rounded px-1 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                                isLight
+                                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  : 'bg-gray-900/50 text-gray-300 hover:bg-gray-900/70',
+                              )}
+                              title="Cancel (Escape)">
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <p
+                              className={cn(
+                                'flex-1 truncate text-sm font-medium',
+                                isLight ? 'text-gray-900' : 'text-white',
+                              )}>
+                              {snapshot.name}
+                            </p>
+                            <button
+                              onClick={() => startEditing(snapshot.id, snapshot.name)}
+                              disabled={loading}
+                              className={cn(
+                                'rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                                isLight ? 'text-blue-700 hover:bg-blue-200' : 'text-blue-300 hover:bg-blue-900/70',
+                              )}
+                              title="Rename this snapshot">
+                              ✏️
+                            </button>
+                          </div>
+                        )}
                         <p className={cn('mt-1 text-xs', isLight ? 'text-gray-500' : 'text-gray-400')}>
                           {formatTimestamp(snapshot.timestamp)}
                         </p>
@@ -431,7 +561,7 @@ const Popup = () => {
                           {formatSize(snapshot.size)}
                         </p>
                       </div>
-                      <div className="flex min-w-[80px] flex-shrink-0 flex-col gap-1">
+                      <div className="flex min-w-[80px] flex-shrink-0 flex-col gap-2">
                         <button
                           onClick={() => restoreSnapshot(snapshot.id)}
                           disabled={loading}
@@ -442,7 +572,7 @@ const Popup = () => {
                               : 'bg-green-900/50 text-green-300 hover:bg-green-900/70',
                           )}
                           title="Restore this snapshot">
-                          ↻ Restore
+                          &#x21bb; Restore
                         </button>
                         <button
                           onClick={() => deleteSnapshot(snapshot.id)}

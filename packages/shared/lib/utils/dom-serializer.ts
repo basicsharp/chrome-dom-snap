@@ -231,15 +231,86 @@ const preserveCurrentState = (): PreservedState => {
       id: document.activeElement?.id,
       name: (document.activeElement as HTMLInputElement)?.name,
     },
-    forms: {} as Record<string, FormData>,
+    forms: {},
+    inputs: {},
     localStorage: { ...localStorage },
     sessionStorage: { ...sessionStorage },
+    globalVars: {},
   };
 
-  // Preserve form data
+  // Preserve global JavaScript variables that might be on window
+  try {
+    // Common global variable patterns to preserve
+    const globalPatterns = [
+      'counter',
+      'count',
+      'items',
+      'data',
+      'state',
+      'appState',
+      'timerValue',
+      'timerInterval',
+      'itemCounter',
+      'isAnimated',
+    ];
+    globalPatterns.forEach(varName => {
+      if (varName in window && window[varName as keyof Window] !== undefined) {
+        state.globalVars[varName] = window[varName as keyof Window];
+      }
+    });
+
+    // Also check for any numeric variables (likely counters) or boolean state variables
+    Object.keys(window).forEach(key => {
+      const value = window[key as keyof Window];
+      if (
+        (typeof value === 'number' && key.toLowerCase().includes('count')) ||
+        (typeof value === 'number' && key.toLowerCase().includes('timer')) ||
+        (typeof value === 'boolean' && key.toLowerCase().includes('animated')) ||
+        (typeof value === 'boolean' && key.toLowerCase().includes('active'))
+      ) {
+        state.globalVars[key] = value;
+      }
+    });
+  } catch (error) {
+    console.warn('[DOM-SNAP] Could not preserve global variables:', error);
+  }
+
+  // Preserve all form inputs individually
+  document.querySelectorAll('input, textarea, select').forEach((input, index) => {
+    const element = input as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const key = element.id || element.name || `input-${index}`;
+
+    if (element.type === 'checkbox' || element.type === 'radio') {
+      state.inputs[key] = {
+        value: element.value,
+        checked: (element as HTMLInputElement).checked,
+      };
+    } else if (element.tagName === 'SELECT') {
+      const selectElement = element as HTMLSelectElement;
+      state.inputs[key] = {
+        value: selectElement.value,
+        selectedIndex: selectElement.selectedIndex,
+      };
+    } else {
+      state.inputs[key] = {
+        value: element.value,
+      };
+    }
+  });
+
+  // Preserve form data as backup
   document.querySelectorAll('form').forEach((form, index) => {
     const formId = form.id || `form-${index}`;
-    state.forms[formId] = new FormData(form);
+    try {
+      const formData = new FormData(form);
+      const formObj: Record<string, string> = {};
+      formData.forEach((value, key) => {
+        formObj[key] = value.toString();
+      });
+      state.forms[formId] = formObj;
+    } catch (error) {
+      console.warn('[DOM-SNAP] Could not preserve form data:', error);
+    }
   });
 
   return state;
@@ -361,41 +432,111 @@ const morphElement = (current: Element, target: Element) => {
 interface PreservedState {
   scroll: { x: number; y: number };
   focus: { element?: string; id?: string; name?: string };
-  forms: Record<string, FormData>;
+  forms: Record<string, Record<string, string>>;
+  inputs: Record<string, { value: string; checked?: boolean; selectedIndex?: number }>;
   localStorage: Record<string, string>;
   sessionStorage: Record<string, string>;
+  globalVars: Record<string, unknown>;
 }
 
 /**
  * Restores preserved state after DOM update
  */
 const restorePreservedState = (state: PreservedState) => {
-  // Restore scroll position
-  setTimeout(() => {
-    window.scrollTo(state.scroll.x, state.scroll.y);
-  }, 50);
+  // Restore global JavaScript variables
+  try {
+    Object.entries(state.globalVars).forEach(([key, value]) => {
+      if (key in window) {
+        // Use proper type assertion for window property assignment
+        (window as unknown as Record<string, unknown>)[key] = value;
+        console.log(`[DOM-SNAP] Restored global variable: ${key} = ${value}`);
+      }
+    });
+  } catch (error) {
+    console.warn('[DOM-SNAP] Could not restore global variables:', error);
+  }
 
-  // Restore form data
+  // Restore individual form inputs
+  Object.entries(state.inputs).forEach(([key, inputState]) => {
+    let element = document.getElementById(key) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+    if (!element && key.startsWith('input-')) {
+      // Try to find by index if no ID/name
+      const index = parseInt(key.split('-')[1]);
+      const allInputs = document.querySelectorAll('input, textarea, select');
+      element = allInputs[index] as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    }
+
+    if (!element) {
+      // Try to find by name
+      element = document.querySelector(`[name="${key}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    }
+
+    if (element) {
+      try {
+        if (element.type === 'checkbox' || element.type === 'radio') {
+          const input = element as HTMLInputElement;
+          input.value = inputState.value;
+          if (inputState.checked !== undefined) {
+            input.checked = inputState.checked;
+          }
+        } else if (element.tagName === 'SELECT') {
+          const select = element as HTMLSelectElement;
+          select.value = inputState.value;
+          if (inputState.selectedIndex !== undefined) {
+            select.selectedIndex = inputState.selectedIndex;
+          }
+        } else {
+          element.value = inputState.value;
+        }
+      } catch (error) {
+        console.warn(`[DOM-SNAP] Could not restore input ${key}:`, error);
+      }
+    }
+  });
+
+  // Restore form data as backup (for any missed inputs)
   Object.entries(state.forms).forEach(([formId, formData]) => {
     const form =
       document.getElementById(formId) ||
       document.querySelector(`form:nth-child(${parseInt(formId.split('-')[1]) + 1})`);
 
-    if (form && formData instanceof FormData) {
-      formData.forEach((value, name) => {
+    if (form && typeof formData === 'object') {
+      Object.entries(formData).forEach(([name, value]) => {
         const input = form.querySelector(`[name="${name}"]`) as HTMLInputElement;
-        if (input && typeof value === 'string') {
+        if (input && typeof value === 'string' && !input.value) {
+          // Only restore if not already restored by inputs logic
           input.value = value;
         }
       });
     }
   });
 
+  // Restore scroll position with multiple attempts
+  const restoreScroll = () => {
+    if (window.scrollX !== state.scroll.x || window.scrollY !== state.scroll.y) {
+      window.scrollTo(state.scroll.x, state.scroll.y);
+      console.log(`[DOM-SNAP] Restored scroll position: ${state.scroll.x}, ${state.scroll.y}`);
+    }
+  };
+
+  // Try multiple times to ensure scroll restoration
+  setTimeout(restoreScroll, 10);
+  setTimeout(restoreScroll, 50);
+  setTimeout(restoreScroll, 100);
+
   // Restore focus (best effort)
   if (state.focus.id) {
     const element = document.getElementById(state.focus.id);
     if (element && 'focus' in element) {
-      setTimeout(() => (element as HTMLElement).focus(), 100);
+      setTimeout(() => {
+        try {
+          (element as HTMLElement).focus();
+          console.log(`[DOM-SNAP] Restored focus to element: ${state.focus.id}`);
+        } catch (error) {
+          console.warn('[DOM-SNAP] Could not restore focus:', error);
+        }
+      }, 150);
     }
   }
 };

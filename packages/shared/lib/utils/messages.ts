@@ -76,6 +76,18 @@ interface ClearAllSnapshotsResponse extends BaseMessage {
   deletedCount: number;
 }
 
+interface RenameSnapshotRequest extends BaseMessage {
+  type: 'RENAME_SNAPSHOT';
+  snapshotId: string;
+  newName: string;
+}
+
+interface RenameSnapshotResponse extends BaseMessage {
+  type: 'RENAME_SNAPSHOT_RESPONSE';
+  success: boolean;
+  error?: string;
+}
+
 interface GetStorageInfoRequest extends BaseMessage {
   type: 'GET_STORAGE_INFO';
 }
@@ -158,6 +170,8 @@ type ExtensionMessage =
   | ClearSnapshotsResponse
   | ClearAllSnapshotsRequest
   | ClearAllSnapshotsResponse
+  | RenameSnapshotRequest
+  | RenameSnapshotResponse
   | GetStorageInfoRequest
   | GetStorageInfoResponse
   | GetCurrentTabRequest
@@ -250,6 +264,8 @@ export type {
   ClearSnapshotsResponse,
   ClearAllSnapshotsRequest,
   ClearAllSnapshotsResponse,
+  RenameSnapshotRequest,
+  RenameSnapshotResponse,
   GetStorageInfoRequest,
   GetStorageInfoResponse,
   GetCurrentTabRequest,
