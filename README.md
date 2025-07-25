@@ -29,6 +29,18 @@
 
 ## 📦 Installation
 
+### From Release (Recommended)
+
+1. **Download the release**
+   - Go to the [Releases](https://github.com/basicsharp/chrome-dom-snap/releases) page
+   - Download the latest `chrome-dom-snap-vX.X.X.zip` file
+
+2. **Install in Chrome**
+   - Open `chrome://extensions`
+   - Enable "Developer mode" (top right toggle)
+   - Drag and drop the downloaded zip file directly into the extensions page
+   - OR: Unzip the file and click "Load unpacked" to select the extracted directory
+
 ### From Source
 
 1. **Clone the repository**
@@ -236,6 +248,30 @@ pnpm e2e
 - **WebSocket Connections**: May need reconnection after restore
 - **Third-party Widgets**: May require refresh for full functionality
 - **Browser APIs**: Some browser API states may not be preserved
+
+## 📦 Release Information
+
+### Version Format
+Releases follow semantic versioning (MAJOR.MINOR.PATCH):
+- MAJOR: Breaking changes
+- MINOR: New features
+- PATCH: Bug fixes and minor improvements
+
+### Release Files
+Each release includes:
+- `chrome-dom-snap-vX.X.X.zip`: Production build ready for installation
+- Source code (zip/tar.gz): Full source code for the release
+- Release notes: Detailed changelog and upgrade instructions
+
+### Installation Methods
+- **Direct Installation**: Drag & drop the .zip file into Chrome extensions page
+- **Manual Installation**: Extract zip and use "Load unpacked"
+- **Development**: Build from source for latest features
+
+### Verifying Releases
+1. Check the release hash (provided in release notes)
+2. Verify the extension ID after installation
+3. Ensure the version number matches the release
 
 ## 🤝 Contributing
 
