@@ -18,6 +18,7 @@ import type {
   RestoreSnapshotRequest,
   DeleteSnapshotRequest,
   RenameSnapshotRequest,
+  CopySnapshotRequest,
   ClearSnapshotsRequest,
   ClearAllSnapshotsRequest,
   GetStorageInfoRequest,
@@ -343,6 +344,57 @@ const handleRenameSnapshot = async (request: RenameSnapshotRequest): Promise<Ext
 };
 
 /**
+ * Handles copy snapshot request
+ */
+const handleCopySnapshot = async (request: CopySnapshotRequest): Promise<ExtensionMessage> => {
+  try {
+    const snapshot = await getSnapshotById(request.snapshotId);
+
+    if (!snapshot) {
+      return {
+        type: 'COPY_SNAPSHOT_RESPONSE',
+        requestId: request.requestId,
+        success: false,
+        error: 'Snapshot not found',
+      };
+    }
+
+    // Add metadata comments to the HTML content
+    const timestamp = new Date(snapshot.timestamp).toISOString().substring(0, 19).replace('T', ' ');
+    const metadataComment = `<!-- DOM Snap Snapshot
+Name: ${snapshot.name}
+Timestamp: ${timestamp}
+URL: ${snapshot.metadata.url}
+Size: ${snapshot.metadata.size} bytes
+-->
+`;
+
+    const contentWithMetadata = metadataComment + snapshot.domContent;
+
+    return {
+      type: 'COPY_SNAPSHOT_RESPONSE',
+      requestId: request.requestId,
+      success: true,
+      content: contentWithMetadata,
+      metadata: {
+        name: snapshot.name,
+        timestamp: snapshot.timestamp,
+        url: snapshot.metadata.url,
+        size: snapshot.metadata.size,
+      },
+    };
+  } catch (error) {
+    console.error('[DOM-SNAP] Error copying snapshot:', error);
+    return {
+      type: 'COPY_SNAPSHOT_RESPONSE',
+      requestId: request.requestId,
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};
+
+/**
  * Handles clear snapshots request
  */
 const handleClearSnapshots = async (request: ClearSnapshotsRequest): Promise<ExtensionMessage> => {
@@ -508,6 +560,10 @@ chrome.runtime.onMessage.addListener(
 
           case 'RENAME_SNAPSHOT':
             response = await handleRenameSnapshot(message as RenameSnapshotRequest);
+            break;
+
+          case 'COPY_SNAPSHOT':
+            response = await handleCopySnapshot(message as CopySnapshotRequest);
             break;
 
           case 'CLEAR_SNAPSHOTS':

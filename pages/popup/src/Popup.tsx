@@ -12,6 +12,7 @@ import type {
   RestoreSnapshotResponse,
   DeleteSnapshotResponse,
   RenameSnapshotResponse,
+  CopySnapshotResponse,
   ClearSnapshotsResponse,
   ClearAllSnapshotsResponse,
 } from '@extension/shared';
@@ -249,6 +250,94 @@ const Popup = () => {
     [saveRename, cancelEditing],
   );
 
+  // Format file size
+  const formatSize = useCallback((bytes: number): string => {
+    if (bytes === 0) return '0 B';
+
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }, []);
+
+  // Format timestamp
+  const formatTimestamp = useCallback((timestamp: number): string => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }, []);
+
+  // Copy snapshot to clipboard
+  const copySnapshot = useCallback(
+    async (snapshotId: string) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await sendMessage<CopySnapshotResponse>({
+          type: 'COPY_SNAPSHOT',
+          snapshotId,
+        });
+
+        if (response.success && response.content) {
+          // Check if the Clipboard API is available
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(response.content);
+
+            // Show success notification with metadata
+            const size = response.metadata?.size ? formatSize(response.metadata.size) : 'unknown size';
+            chrome.notifications.create({
+              type: 'basic',
+              iconUrl: 'icon-34.png',
+              title: 'DOM Snap',
+              message: `Snapshot copied to clipboard (${size})`,
+            });
+          } else {
+            // Fallback for browsers without Clipboard API
+            const textArea = document.createElement('textarea');
+            textArea.value = response.content;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+              document.execCommand('copy');
+              textArea.remove();
+
+              // Show success notification
+              chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icon-34.png',
+                title: 'DOM Snap',
+                message: 'Snapshot copied to clipboard',
+              });
+            } catch {
+              textArea.remove();
+              throw new Error('Clipboard copy not supported');
+            }
+          }
+        } else {
+          setError(response.error || 'Failed to copy snapshot');
+        }
+      } catch (error) {
+        console.error('Error copying snapshot:', error);
+        setError(error instanceof Error ? error.message : 'Failed to copy snapshot');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sendMessage, formatSize],
+  );
+
   // Clear all snapshots for current page
   const clearAllSnapshots = useCallback(async () => {
     if (!confirm('Are you sure you want to delete all snapshots for this page?')) {
@@ -312,29 +401,6 @@ const Popup = () => {
       setLoading(false);
     }
   }, [sendMessage]);
-
-  // Format file size
-  const formatSize = useCallback((bytes: number): string => {
-    if (bytes === 0) return '0 B';
-
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }, []);
-
-  // Format timestamp
-  const formatTimestamp = useCallback((timestamp: number): string => {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  }, []);
 
   // Load data on mount
   useEffect(() => {
@@ -550,7 +616,19 @@ const Popup = () => {
                                 isLight ? 'text-blue-700 hover:bg-blue-200' : 'text-blue-300 hover:bg-blue-900/70',
                               )}
                               title="Rename this snapshot">
-                              ✏️
+                              &#x270f;&#xfe0f;
+                            </button>
+                            <button
+                              onClick={() => copySnapshot(snapshot.id)}
+                              disabled={loading}
+                              className={cn(
+                                'rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                                isLight
+                                  ? 'text-purple-700 hover:bg-purple-200'
+                                  : 'text-purple-300 hover:bg-purple-900/70',
+                              )}
+                              title="Copy snapshot HTML to clipboard">
+                              &#x1f4cb;
                             </button>
                           </div>
                         )}

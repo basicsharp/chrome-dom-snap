@@ -88,6 +88,24 @@ interface RenameSnapshotResponse extends BaseMessage {
   error?: string;
 }
 
+interface CopySnapshotRequest extends BaseMessage {
+  type: 'COPY_SNAPSHOT';
+  snapshotId: string;
+}
+
+interface CopySnapshotResponse extends BaseMessage {
+  type: 'COPY_SNAPSHOT_RESPONSE';
+  success: boolean;
+  content?: string;
+  metadata?: {
+    name: string;
+    timestamp: number;
+    url: string;
+    size: number;
+  };
+  error?: string;
+}
+
 interface GetStorageInfoRequest extends BaseMessage {
   type: 'GET_STORAGE_INFO';
 }
@@ -172,6 +190,8 @@ type ExtensionMessage =
   | ClearAllSnapshotsResponse
   | RenameSnapshotRequest
   | RenameSnapshotResponse
+  | CopySnapshotRequest
+  | CopySnapshotResponse
   | GetStorageInfoRequest
   | GetStorageInfoResponse
   | GetCurrentTabRequest
@@ -266,6 +286,8 @@ export type {
   ClearAllSnapshotsResponse,
   RenameSnapshotRequest,
   RenameSnapshotResponse,
+  CopySnapshotRequest,
+  CopySnapshotResponse,
   GetStorageInfoRequest,
   GetStorageInfoResponse,
   GetCurrentTabRequest,
