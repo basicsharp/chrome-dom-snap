@@ -6,15 +6,15 @@
 ![](https://img.shields.io/badge/Chrome-Extension-4285F4?style=flat-square&logo=googlechrome&logoColor=white)
 ![](https://img.shields.io/badge/Manifest-V3-FF5722?style=flat-square)
 
-> A privacy-focused Chrome extension that allows users to capture, store, and restore DOM states of web pages locally.
+> A privacy-focused Chrome extension that allows users to capture, store, and restore DOM states of web pages locally, featuring advanced hot reload restoration technology.
 
 ## 🚀 Features
 
 ### Core Functionality
 - **📸 DOM Snapshot Capture**: Capture complete DOM structure of any webpage
 - **💾 Local Storage**: All data stored locally using chrome.storage.local (no cloud sync)
-- **📋 Snapshot Management**: List, restore, and delete snapshots per URL
-- **🔄 DOM Restoration**: Restore previous DOM states with confirmation dialogs
+- **📋 Snapshot Management**: List, rename, copy, restore, and delete snapshots per URL
+- **🔥 Hot Reload Restoration**: State-preserving DOM restoration without page refresh
 - **🧹 Smart Cleanup**: Automatic storage management with quota monitoring
 - **🛡️ Privacy First**: No external communication or data collection
 
@@ -25,6 +25,7 @@
 - **🔒 Type Safety**: Full TypeScript implementation with strict type checking
 - **🎨 Modern UI**: React-based popup with responsive design and theme support
 - **♿ Accessibility**: WCAG compliant with jsx-a11y validation
+- **🔄 State Preservation**: Maintains JavaScript variables, form data, and scroll positions
 
 ## 📦 Installation
 
@@ -69,15 +70,26 @@ pnpm dev
 
 ### Managing Snapshots
 - **View Snapshots**: See all snapshots for the current page URL
-- **Restore DOM**: Click "Restore" to replace current DOM with snapshot
+- **Rename Snapshots**: Click the edit icon (✏️) to rename any snapshot
+- **Copy to Clipboard**: Use the clipboard icon (📋) to copy snapshot HTML
+- **Restore DOM**: Click "Restore" to replace current DOM with snapshot (supports hot reload)
 - **Delete Snapshot**: Remove individual snapshots
-- **Clear All**: Remove all snapshots for current URL
+- **Clear All**: Remove all snapshots for current URL or all pages
 - **Storage Monitor**: View real-time storage usage
+
+### Hot Reload Restoration
+The extension features advanced state-preserving restoration that maintains:
+- **JavaScript Variables**: Counters, timers, and application state
+- **Form Data**: Input values, checkboxes, radio buttons, and selections
+- **UI State**: Scroll positions and focus states
+- **Event Listeners**: Preserves existing event handlers
+- **Dynamic Content**: Maintains JavaScript-generated content
 
 ### Storage Management
 - **Automatic Cleanup**: Triggers at 80% storage capacity
 - **Size Limits**: Individual snapshots limited to 5MB
 - **Total Capacity**: Uses chrome.storage.local (10MB limit)
+- **Date Format**: Consistent yyyy-mm-dd format for all timestamps
 
 ## 🏗️ Architecture
 
@@ -109,18 +121,21 @@ chrome-dom-snap/
 - **Form State**: Preserves input values and form states
 - **Namespace Support**: Handles SVG and MathML correctly
 - **Size Validation**: Prevents oversized snapshots
+- **Hot Reload Support**: State-preserving DOM restoration
 
 #### Storage System
 - **CRUD Operations**: Complete snapshot lifecycle management
 - **URL Grouping**: Organizes snapshots by normalized URLs
 - **Metadata Tracking**: Stores size, timestamp, and page information
 - **Quota Management**: Automatic cleanup and usage monitoring
+- **Rename Support**: Custom snapshot naming with validation
 
 #### Messaging System
 - **Type Safety**: Full TypeScript message definitions
 - **Request/Response**: Correlation with unique IDs
 - **Error Handling**: Comprehensive error management
 - **Timeout Protection**: Prevents hanging operations
+- **Clipboard Integration**: Safe content copying with metadata
 
 ## 🛠️ Development
 
@@ -208,8 +223,6 @@ pnpm e2e
 ### What DOM Snap Does NOT Do
 - **No Cloud Sync**: All data stays local for privacy
 - **No Screenshots**: Only captures DOM structure, not visual appearance
-- **No JavaScript State**: Cannot preserve application state or event listeners
-- **No Hash Routing**: Strips hash fragments from URLs for grouping
 - **No Cross-Origin**: Limited by Chrome extension security policies
 
 ### Known Limitations
@@ -217,6 +230,12 @@ pnpm e2e
 - **Large DOMs**: 5MB per snapshot limit for performance
 - **Dynamic Content**: May not capture dynamically loaded content
 - **SPA Compatibility**: Hash-based routing may group incorrectly
+
+### Hot Reload Limitations
+- **External Scripts**: Cannot preserve external script state
+- **WebSocket Connections**: May need reconnection after restore
+- **Third-party Widgets**: May require refresh for full functionality
+- **Browser APIs**: Some browser API states may not be preserved
 
 ## 🤝 Contributing
 
